@@ -1,0 +1,73 @@
+name: HeadRush Core - QEngine host diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - headrush-core-520-lab
+    paths:
+      - ".github/workflows/headrush-core-host-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout QEngine
+        uses: actions/checkout@v4
+
+      - name: Check QEngine scripts syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          count = 0
+          for path in Path("scripts").rglob("*.py"):
+              ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+              count += 1
+          print(f"Python syntax OK: {count} source files")
+          PY
+          while IFS= read -r -d '' script; do
+            bash -n "$script"
+          done < <(find scripts -name '*.sh' -type f -print0)
+          echo "Shell syntax OK"
+
+      - name: Install QEMU and filesystem utilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-arm qemu-utils e2fsprogs file
+          python3 --version
+          docker --version
+          qemu-system-arm --version | head -1
+          qemu-system-aarch64 --version | head -1
+          qemu-img --version | head -1
+          debugfs -V 2>&1 | head -1
+          file --version | head -1
+
+      - name: Check privileged Docker capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker info --format 'Docker server: {{.ServerVersion}}'
+          docker run --rm --privileged ubuntu:24.04 sh -c \
+            'test -e /dev/null && echo "Privileged container started"'
+
+      - name: Write diagnostic summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## QEngine host readiness"
+            echo ""
+            echo "This checks build prerequisites only."
+            echo "It does NOT boot HeadRush Core firmware or validate DSP."
+            echo "The proprietary firmware is not included in this repository."
+          } >> "$GITHUB_STEP_SUMMARY"
