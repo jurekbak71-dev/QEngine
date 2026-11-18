@@ -31,3 +31,19 @@ The tool does not distribute vendor content or modify any input. The output cont
 
 ## Follow-up
 Trace instructions referencing each vtable address point (`vtable + 8` in the ABI), find constructor bodies and registry mapping from `ModuleType` IDs; distinguish Qt plugin loading from DSP registration. Do not infer a supported `.so` loader from RTTI/vtables alone.
+
+## Confirmed code-side references (additional static check)
+
+The first virtual function for each of the 90 DSP module vtables was inspected
+as ARM code. All **90/90** contain a PC-relative `ldr r3,[pc,#imm]` literal
+followed by `add r3,pc,r3` that resolves exactly to the associated vtable
+prefix address. This is more specific than merely finding a pointer-shaped
+value in read-only data. It does **not** establish that the inspected function
+is the constructor, and it is **not** proof of an external `.so` plugin ABI.
+
+```bash
+python3 tools/headrush/verify_vtable_code_refs.py --evil /private/Evil --output /private/arm-vtable-refs.json
+```
+
+Local verification on the provided 5.2.0 ELF: 90/90 matching, 13 total
+unit tests passed (synthetic ELF fixtures). Actual DSP runtime not tested.
