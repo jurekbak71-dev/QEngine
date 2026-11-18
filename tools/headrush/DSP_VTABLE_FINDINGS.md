@@ -15,8 +15,8 @@ Input: extracted vendor binary `/usr/Evil/Evil` from the user-supplied official 
 | OctFuzz | 0x02f28dac | 0x02ea8f78 | 0x0084750c |
 | Octaves | 0x02f28de8 | 0x02ea920c | 0x00847b24 |
 | OctavesUp | 0x02f28ddc | 0x02ea9188 | 0x008479ec |
-| AIRDelay | 0x02f28d1c | 0x02ea8948 | 0x0098462c |
-| TriKnobFuzz | 0x02f28f50 | 0x02eaa184 | 0x0086a3e8 |
+| AIRDelay | 0x02f28d1c | 0x02ea8948 | 0x009846ec |
+| TriKnobFuzz | 0x02f28f50 | 0x02eaa184 | 0x0086a668 |
 
 The table is an address-level **static candidate map**, not an executed call trace. It supports the presence of compiled C++ DSP classes with virtual dispatch but does not yet locate the model-to-constructor registry/factory. An actual external `.so` plugin interface remains unverified.
 
