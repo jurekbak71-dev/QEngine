@@ -1,0 +1,25 @@
+name: HeadRush Core registration inspector tests
+
+on:
+  push:
+    branches: [headrush-core-520-lab]
+    paths:
+      - "tools/headrush/**"
+      - ".github/workflows/headrush-inspector-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unittest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile scripts
+        run: python3 -m py_compile tools/headrush/inspect_core_registration.py tools/headrush/test_inspect_core_registration.py
+      - name: Run tests
+        run: python3 -m unittest discover -s tools/headrush -p 'test_*.py' -v
+      - name: Note scope
+        run: echo "Tests only the offline parser with synthetic unit fixtures; no vendor firmware executed." >> "$GITHUB_STEP_SUMMARY"
