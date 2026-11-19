@@ -68,6 +68,7 @@ class TwoStageFactoryTests(unittest.TestCase):
         report=analyze(blob,required_sha=None)
         self.assertEqual((report['primary_entries'],report['secondary_entries']),(139,80))
         self.assertEqual(len(report['verified_spatial_modules']),8)
+        self.assertTrue(all(row['vtable_method_count']==31 for row in report['verified_spatial_modules']))
         self.assertEqual({x['module_index'] for x in report['verified_spatial_modules']},
                          {32,35,37,38,42,43,84,85})
 
@@ -83,6 +84,13 @@ class TwoStageFactoryTests(unittest.TestCase):
         va=PRIMARY_TABLE+4*43
         struct.pack_into('<I',blob,at(va),0xea000000)
         with self.assertRaisesRegex(ValueError,'secondary dispatch'):
+            analyze(blob,None)
+
+    def test_bad_slot20_rejected(self):
+        blob,at,names=synthetic_elf()
+        vptr=names[85][0]
+        struct.pack_into('<I',blob,at(vptr+20*4),0)
+        with self.assertRaisesRegex(ValueError,'31 executable'):
             analyze(blob,None)
 
     def test_wrong_rtti_rejected(self):
