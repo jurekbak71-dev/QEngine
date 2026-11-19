@@ -95,8 +95,17 @@ def verify_handler(blob,sec,name,handler):
     text=sec['.text']
     if not (text['va']<=first<text['va']+text['size']):
         raise ValueError('vtable first method not inside .text')
+    methods=[u32(blob,sec,vptr+4*i) for i in range(31)]
+    if not all(text['va']<=(ptr&~1)<text['va']+text['size'] for ptr in methods):
+        raise ValueError('Expected 31 executable vtable method pointers')
+    following=u32(blob,sec,vptr+4*31)
+    if text['va']<=(following&~1)<text['va']+text['size']:
+        raise ValueError('Unexpected additional vtable entry after slot 30')
     return {'module':name,'handler_va':f'0x{handler:08X}','vtable_va':f'0x{vptr:08X}',
-            'typeinfo_va':f'0x{ti:08X}','rtti':raw_name,'first_virtual_va':f'0x{first:08X}'}
+            'typeinfo_va':f'0x{ti:08X}','rtti':raw_name,'first_virtual_va':f'0x{first:08X}',
+            'vtable_method_count':len(methods),
+            'slot20_va':f'0x{methods[20]:08X}',
+            'slot21_va':f'0x{methods[21]:08X}'}
 
 def analyze(blob,required_sha=ELF_SHA256,models=MODELS):
     digest=hashlib.sha256(blob).hexdigest()
