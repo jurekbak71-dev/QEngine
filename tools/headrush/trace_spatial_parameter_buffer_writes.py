@@ -91,6 +91,29 @@ CONSTRUCTOR_INDEX_SITES = {
 }
 REFERENCE_COUNT_HELPER = 0xCD2BD4
 
+# Same relative flag offset read in an EHABI-bounded routine that also moves
+# NEON 32-bit vectors between caller-provided buffers. Runtime identity of
+# this object with the connector's second argument is still NOT established.
+FLAG_CONSUMER_WORDS = {
+    0x7F0B30: 0xE16D42F4,  # procedure prologue
+    0x7F0B48: 0xE5D03B6C,  # LDRB r3,[r0,#0xB6C]
+    0x7F0B64: 0xE3530000,  # CMP r3,#0
+    0x7F0B6C: 0x0A00002A,  # BEQ to continuation 0x7F0C1C
+    0x7F0B70: 0xE5903C28,  # read state selector
+    0x7F0B74: 0xE5803C2C,  # copy state selector
+    0x7F0B7C: 0x908FF103,  # ADDLS pc,pc,r3,LSL#2: indexed dispatch
+    0x7F0D78: 0xF46E0A8D,  # VLD1.32 {d16,d17},[lr]!
+    0x7F0D84: 0xF4400A8D,  # VST1.32 {d16,d17},[r0]!
+    0x7EF940: 0xE16D42F4,  # separate floating-point function prologue
+    0x7EFA90: 0xEE380A40,  # VSUB.F32 s0,s16,s0
+    0x7EFA98: 0xEE200A28,  # VMUL.F32 s0,s0,s17
+}
+FLAG_CONSUMER_CALLS = {
+    0x7F0DF0: 0x7EF940,
+    0x7F0E00: 0xC19A80,
+    0x7EFA9C: 0x14E8298,
+}
+
 SETTER_HELPER_CALL = 0x7A68B4
 SETTER_HELPER_TARGET = 0xCB2E48
 
@@ -108,6 +131,12 @@ def static_evidence(blob, methods=METHODS, expected_sha=EXPECTED_SHA256):
                 raise ValueError(f'{name}: different instruction at 0x{va:08X}')
     if decode_bl(blob, sections, SETTER_HELPER_CALL) != SETTER_HELPER_TARGET:
         raise ValueError('Setter helper target changed')
+    for va, opcode in FLAG_CONSUMER_WORDS.items():
+        if read_u32(blob, sections, va) != opcode:
+            raise ValueError(f'flag consumer: different instruction at 0x{va:08X}')
+    for va, target in FLAG_CONSUMER_CALLS.items():
+        if decode_bl(blob, sections, va) != target:
+            raise ValueError(f'flag consumer: different BL target at 0x{va:08X}')
     rows = []
     for name, method in methods.items():
         constructor = CONSTRUCTOR_INDEX_SITES.get(name)
@@ -152,6 +181,17 @@ def static_evidence(blob, methods=METHODS, expected_sha=EXPECTED_SHA256):
                                'stored_controller_field_offset':'0xB8C'},
             'clear_slot_va':'0x007D2098',
             'helper_virtual_method_index':47,
+            'flag_consumer_opcode_checks':len(FLAG_CONSUMER_WORDS)+len(FLAG_CONSUMER_CALLS),
+            'flag_consumer':{
+                'method_start_va':'0x007F0B30',
+                'flag_read_va':'0x007F0B48',
+                'flag_offset':'0xB6C',
+                'zero_flag_branch_to':'0x007F0C1C',
+                'neon_load_va':'0x007F0D78',
+                'neon_store_va':'0x007F0D84',
+                'direct_callees':[f'0x{x:08X}' for x in FLAG_CONSUMER_CALLS.values()],
+                'certainty':'Same static field offset and co-located vector buffer operations; same runtime instance and exact SESP algorithm NOT verified',
+            },
             'connectors':rows,
             'limitations':('A32 static instruction checks only. Actual object identity, '
                            'buffer lifetime, scheduling and any SESP audio DSP consumer '
