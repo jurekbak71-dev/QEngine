@@ -9,7 +9,7 @@ from trace_spatial_dsp_module_abi import (
 
 
 def make_module_fixture():
-    blob, at, names, _, _ = synthetic_elf()
+    blob, at, names, *_ = synthetic_elf()
     # Fake addresses lie inside fixture .text, which covers 0x00812570..0x00816770.
     vtable = names[84][0]
     slot20, slot21 = 0x00813000, 0x00813100
