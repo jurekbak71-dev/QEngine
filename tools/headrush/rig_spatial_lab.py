@@ -154,12 +154,16 @@ def main():
         if any(field is None for field in fields):
             parser.error('editing requires --rig-name, --model, --parameter, --value')
         result, change = patch_rig(rigs, *fields)
-        result['lab_edit_metadata'] = change
     else:
-        result = inspect(rigs)
+        result, change = inspect(rigs), None
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n',
                         encoding='utf-8')
+    if change is not None:
+        audit_path = args.out.with_name(args.out.name + '.audit.json')
+        audit_path.write_text(json.dumps(change, ensure_ascii=False, indent=2) + '\n',
+                              encoding='utf-8')
+        print('Wrote experimental audit', audit_path)
     print('Wrote', args.out)
 
 
