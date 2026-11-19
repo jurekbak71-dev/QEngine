@@ -4,12 +4,13 @@ import unittest
 from trace_spatial_parameter_buffer_writes import (
     static_evidence, METHOD_WORDS, SETTER_WORDS, CLEAR_WORDS, HELPER_WORDS,
     CONSTRUCTOR_INDEX_SITES, METHODS, SETTER_HELPER_CALL, SETTER_HELPER_TARGET,
-    REFERENCE_COUNT_HELPER,
+    REFERENCE_COUNT_HELPER, FLAG_CONSUMER_WORDS, FLAG_CONSUMER_CALLS,
 )
 
 REGIONS = [
     ('text_a', 0x007A6800, 0x1000),
     ('text_b', 0x007D2000, 0x200),
+    ('audio_processing', 0x007EF000, 0x2600),
     ('text_c', 0x00926000, 0x30000),
     ('text_d', 0x00CB2E00, 0x200),
     ('data_vtables', 0x02EB2900, 0x200),
@@ -41,9 +42,10 @@ def fixture():
     def put(va,word):struct.pack_into('<I',data,at(va),word)
     def bl(va,target):return 0xeb000000 | (((target-va-8)//4)&0xffffff)
 
-    for table in (SETTER_WORDS,CLEAR_WORDS,HELPER_WORDS):
+    for table in (SETTER_WORDS,CLEAR_WORDS,HELPER_WORDS,FLAG_CONSUMER_WORDS):
         for va,word in table.items():put(va,word)
     put(SETTER_HELPER_CALL,bl(SETTER_HELPER_CALL,SETTER_HELPER_TARGET))
+    for va,target in FLAG_CONSUMER_CALLS.items():put(va,bl(va,target))
     for name,method in METHODS.items():
         start=method['method_va']
         put(method['vtable_va'],start)
@@ -63,6 +65,7 @@ class ParameterBufferWriteTests(unittest.TestCase):
         self.assertEqual(report['method_opcode_checks'],75)
         self.assertEqual(report['constructor_opcode_checks'],15)
         self.assertEqual(report['upstream_opcode_checks'],15)
+        self.assertEqual(report['flag_consumer_opcode_checks'],15)
         self.assertEqual({x['connector']:x['constructor_confirmed_index'] for x in report['connectors']},
                          {'ShimmerIntervalKind':0,'ChorusMultiVoiceKind':4,'ChorusMultiWaveformKind':7})
 
@@ -122,6 +125,21 @@ class ParameterBufferWriteTests(unittest.TestCase):
         raw,_=fixture()
         with self.assertRaisesRegex(ValueError,'SHA-256'):
             static_evidence(raw,expected_sha='0'*64)
+
+    def test_audio_buffer_adjacent_flag_read(self):
+        raw,_=fixture();report=static_evidence(raw,expected_sha=None)
+        self.assertEqual(report['flag_consumer']['flag_read_va'],'0x007F0B48')
+        self.assertEqual(report['flag_consumer']['neon_store_va'],'0x007F0D84')
+
+    def test_audio_neon_opcode_mutation_rejected(self):
+        raw,at=fixture();raw[at(0x7f0d84)]=0
+        with self.assertRaisesRegex(ValueError,'flag consumer'):
+            static_evidence(raw,expected_sha=None)
+
+    def test_audio_processing_call_mutation_rejected(self):
+        raw,at=fixture();raw[at(0x7f0df0)]=0
+        with self.assertRaisesRegex(ValueError,'flag consumer'):
+            static_evidence(raw,expected_sha=None)
 
     def test_invalid_elf(self):
         with self.assertRaisesRegex(ValueError,'ARM32'):
