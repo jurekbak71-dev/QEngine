@@ -72,3 +72,29 @@ python3 -m unittest discover -s tools/headrush -p 'test_*.py' -v
 **NIEWYKONANE:** podmiana natywnego algorytmu, import własnej biblioteki `.so` i testy na fizycznym HeadRush Core.
 
 **Następny etap:** odszukać odczyty pól wpisu `+4` i flagi `+0xB6C` w kodzie odbiorcy, identyfikować jego vtable i powiązanie z obiektami silnika DSP.
+
+## Dalsza weryfikacja: odczyt flagi obok obsługi buforów wektorowych
+
+Kolejny skan kodu tego samego `Evil` znalazł metodę rozpoczynającą się pod VA `0x007F0B30` (początek potwierdzony wpisem `.ARM.exidx`). Kod ten zawiera:
+
+| Adres | Instrukcja | Dowód |
+|---|---|---|
+| `0x007F0B48` | `ldrb r3,[r0,#0xB6C]` | odczyt bajtu pod identycznym offsetem jak znacznik ustawiany przez trzy łączniki |
+| `0x007F0B64` | `cmp r3,#0` | sprawdzenie znacznika |
+| `0x007F0B6C` | `beq 0x007F0C1C` | wybór dalszego bloku przy zerowej wartości |
+| `0x007F0B70..0x007F0B7C` | `ldr`, `str`, `addls pc,pc,r3,lsl #2` | odczyt, kopia i rozgałęzienie według dodatkowego stanu obiektu (`+0xC28/0xC2C`) |
+| `0x007F0D78` | `vld1.32 {d16,d17},[lr]!` | odczyt 32-bitowych danych wektorowych z bufora |
+| `0x007F0D84` | `vst1.32 {d16,d17},[r0]!` | zapis 32-bitowych danych wektorowych do bufora |
+| `0x007F0DF0` | `bl 0x007EF940` | wywołanie sąsiedniej funkcji przetwarzającej bufor |
+| `0x007F0E00` | `bl 0x00C19A80` | drugie bezpośrednie wywołanie w tym samym zakresie |
+| `0x007EFA90` i `0x007EFA98` | `vsub.f32` i `vmul.f32` | obliczenia zmiennoprzecinkowe w funkcji `0x007EF940` |
+
+**POTWIERDZONE:** pole o tym samym względnym adresie `+0xB6C` jest odczytywane w kodzie zawierającym obsługę buforów, instrukcje NEON i wywołania wykonujące obliczenia liczbowe.
+
+**HIPOTEZA — WYRAŹNE OGRANICZENIE:** może to być wspólna funkcja przetwarzania bloków audio lub synchronizowania ich stanu, lecz nie udowodniono jeszcze, że argument `r0` wskazuje dokładnie ten sam obiekt, który jest przekazywany jako drugi argument metod `ShimmerIntervalKind` czy `ChorusMultiVoiceKind`. W szczególności, współwystępowanie odczytu znacznika i operacji NEON nie dowodzi, że zapis łącznika bezpośrednio uruchamia dane obliczenia.
+
+Zaktualizowany analizator kontroluje **15 dodatkowych miejsc** (12 opkodów i 3 cele wywołań `BL`) na oryginalnym ELF. Dodano 3 testy syntetyczne. Lokalnie **16/16 PASS**; po drugim commicie [GitHub Actions 44576763941](https://github.com/jurekbak71-dev/QEngine/actions/runs/44576763941) **153/153 PASS**.
+
+Przejściowa porażka workflow [44576712547](https://github.com/jurekbak71-dev/QEngine/actions/runs/44576712547) wynikała z kolejności commitów: nowy analizator próbował odczytać VA `0x007F0B30` ze starego syntetycznego ELF, w którym ten adres nie był mapowany (`ValueError: Unmapped virtual address 0x007F0B30`). Zaktualizowano sekcje i dane testowe oraz dodano nowe kontrole, nie osłabiając walidacji. Przebieg po aktualizacji obu plików zakończył się sukcesem.
+
+**Następne badanie:** połączyć konkretną instancję obiektu kontrolera i jego vtable z metodą `0x007F0B30` oraz sprawdzić konsumenta 3-bajtowych rekordów. To potrzebne do udowodnienia rzeczywistej ścieżki parametr → algorytm SESP.
