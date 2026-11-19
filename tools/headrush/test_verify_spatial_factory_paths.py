@@ -45,13 +45,14 @@ def synthetic_elf():
     names={}
     for i,(index,(name,handler)) in enumerate(MODELS.items()):
         va=SECONDARY_TABLE+4*(index-27);word(va,branch(va,handler))
-        vptr=0x2ea8000+(index*16)
+        vptr=0x2ea8000+(i*0x100)+8
         ti=0x2f50000+(index*16)
         nameva=0x1900000+(i*128)
         rtti=f'N8EvilDSPs9DSPModuleINS_{len(name)}{name}ENS_1AE'.encode()+b'\0'
         data[at(nameva):at(nameva)+len(rtti)]=rtti
         word(ti+4,nameva)
-        word(vptr-8,0);word(vptr-4,ti);word(vptr,0x812570)
+        word(vptr-8,0);word(vptr-4,ti)
+        for slot in range(31):word(vptr+4*slot,0x812570)
         word(handler+0x14,0xe59f3000)
         word(handler+0x1c,vptr-(handler+0x34))
         word(handler+0x24,0xe08f3003)
