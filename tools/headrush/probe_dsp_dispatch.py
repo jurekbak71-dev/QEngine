@@ -38,6 +38,8 @@ def locate_dispatch(blob):
         table_file = va_to_file(table_va, sec)
         if table_file is None:
             continue
+        if table_file + 139 * 4 > len(blob):
+            raise ValueError('Truncated DSP jump table')
         targets = []
         for index in range(139):
             addr = table_va + 4 * index
@@ -47,6 +49,21 @@ def locate_dispatch(blob):
                       'default_target_va': decode_branch(third, va + 8),
                       'targets': targets})
     return found
+
+
+def choose_candidate(target, default_target, references, window=48):
+    """Accept only one unique DSP type at the nearest reference address."""
+    if target == default_target:
+        return None, None, False
+    nearby = sorted((va - target, typ) for va, types in references.items()
+                    if 0 <= va - target <= window for typ in types)
+    if not nearby:
+        return None, None, False
+    nearest_offset = nearby[0][0]
+    candidates = {typ for offset, typ in nearby if offset == nearest_offset}
+    if len(candidates) != 1:
+        return None, nearest_offset, True
+    return next(iter(candidates)), nearest_offset, False
 
 
 def inspect(blob):
@@ -61,13 +78,12 @@ def inspect(blob):
             by_add.setdefault(hit['add_va'], set()).add(entry['type'])
     cases = []
     for index, target in enumerate(switch['targets']):
-        # Keep the next sequential constructor case outside the lookahead window.
-        nearest = sorted((va - target, typ) for va, types in by_add.items()
-                         if 0 <= va - target <= 48 for typ in types)
-        selected = nearest[0][1] if nearest and target != switch['default_target_va'] else None
+        selected, offset, ambiguous = choose_candidate(
+            target, switch['default_target_va'], by_add)
         cases.append({'case': index, 'branch_target_va': target,
                       'candidate_dsp_type': selected,
-                      'vtable_reference_offset': nearest[0][0] if selected else None,
+                      'vtable_reference_offset': offset,
+                      'ambiguous_nearest_reference': ambiguous,
                       'default': target == switch['default_target_va']})
     return {'dispatch_va': switch['dispatch_va'],
             'jump_table_va': switch['jump_table_va'],
